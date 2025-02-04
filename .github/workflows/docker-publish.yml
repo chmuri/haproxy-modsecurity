@@ -1,0 +1,37 @@
+
+name: Publish Docker image
+
+on:
+  schedule:
+    - cron: '25 21 * * *'
+  push:
+  pull_request:
+
+
+jobs:
+
+  push_to_registry:
+    name: Push Docker image to Docker Hub
+    runs-on: ubuntu-latest
+    steps:
+      - name: Extract branch name
+        shell: bash
+        run: echo "branch=${GITHUB_HEAD_REF:-${GITHUB_REF#refs/heads/}}" >> $GITHUB_OUTPUT
+        id: extract_branch
+      - name: Check out the repo
+        uses: actions/checkout@v3
+      
+      - name: Log in to Docker Hub
+        uses: docker/login-action@f4ef78c080cd8ba55a85445d5b36e214a81df20a
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+      
+      
+      - name: Build and push Docker image
+        uses: docker/build-push-action@3b5e8027fcad23fda98b2e3ac259d8d67585f671
+        with:
+          context: .
+          file: ./Dockerfile
+          push: true
+          tags: chmuri/haproxy-modsecurity:${{ steps.extract_branch.outputs.branch }}
