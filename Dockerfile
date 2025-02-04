@@ -44,7 +44,7 @@ RUN cd /opt && \
     git submodule update && \
     ./build.sh && \
     ./configure && \
-    make -j && \
+    make && \
     make install
 
 
@@ -52,7 +52,7 @@ RUN cd /opt && \
     wget https://www.haproxy.org/download/3.0/src/haproxy-3.0.8.tar.gz && \
     tar xzf haproxy-3.0.8.tar.gz && \
     cd haproxy-3.0.8 && \
-    make -j TARGET=linux-glibc USE_OPENSSL=1 USE_ZLIB=1 USE_PCRE=1 USE_LUA=1 LUA_LIB=/usr/lib/x86_64-linux-gnu/ LUA_INC=/usr/include/lua5.4/ && \
+    make  TARGET=linux-glibc USE_OPENSSL=1 USE_ZLIB=1 USE_PCRE=1 USE_LUA=1 LUA_LIB=/usr/lib/x86_64-linux-gnu/ LUA_INC=/usr/include/lua5.4/ && \
     make install
 
 
