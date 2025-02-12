@@ -74,7 +74,7 @@ RUN sed -i 's/app=str(sample_app) id=unique-id src-ip=src/app=str(haproxy_waf) i
 
 # Zamiana domyślnego pliku konfiguracyjnego HAProxy na nowy (haproxy.conf z build context)
 RUN mv /etc/haproxy/haproxy.cfg /etc/haproxy/haproxy.cfg_orig
-COPY haproxy.conf /etc/haproxy/haproxy.cfg
+COPY haproxy.cfg /etc/haproxy/haproxy.cfg
 RUN sed -i -e '$a\' /etc/haproxy/haproxy.cfg
 
 # Kopiujemy skrypt startowy, który uruchamia jednocześnie coraza-spoa i HAProxy
