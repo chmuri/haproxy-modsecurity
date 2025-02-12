@@ -1,93 +1,123 @@
-# Używamy Ubuntu 22.04 jako obrazu bazowego
-FROM ubuntu:22.04
+# Dockerfile dla HAProxy z Coraza-SPOA na Ubuntu 24.04
 
-# Ustawienie nieinteraktywnego trybu instalacji
+FROM ubuntu:24.04
+
+# Ustawienie trybu nieinteraktywnego
 ENV DEBIAN_FRONTEND=noninteractive
 
-# Aktualizacja systemu i instalacja niezbędnych pakietów
+# Aktualizacja systemu i instalacja podstawowych pakietów
 RUN apt-get update && apt-get upgrade -y && \
     apt-get install -y \
-      gcc \
-      make \
-      build-essential \
-      autoconf \
-      automake \
-      libtool \
-      libcurl4-openssl-dev \
-      liblua5.3-dev \
-      libfuzzy-dev \
-      ssdeep \
-      gettext \
-      pkg-config \
-      libgeoip-dev \
-      libyajl-dev \
-      doxygen \
-      libpcre++-dev \
-      libpcre2-16-0 \
-      libpcre2-dev \
-      libpcre2-posix3 \
-      zlib1g \
-      zlib1g-dev \
-      wget \
-      git \
-      libssl-dev \
-      libpcre3-dev \
-      lua5.3 \
-      libmaxminddb-dev \
-      libxml2-dev \
-      libjansson-dev
+        pkg-config \
+        make \
+        gcc \
+        git \
+        curl \
+        lsb-release \
+        gnupg \
+        golang-go
 
-# Pobranie i instalacja ModSecurity v3 (WAF)
-RUN cd /opt && \
-    git clone --depth 1 -b v3/master --single-branch https://github.com/SpiderLabs/ModSecurity && \
-    cd ModSecurity && \
-    git submodule init && \
-    git submodule update && \
-    ./build.sh && \
-    ./configure && \
-    make && \
-    make install
+# Dodanie repozytorium HAProxy 3.0 i instalacja HAProxy
+RUN curl -fsSL https://haproxy.debian.net/bernat.de.gpg | gpg --dearmor -o /usr/share/keyrings/haproxy-archive-keyring.gpg && \
+    echo "deb [signed-by=/usr/share/keyrings/haproxy-archive-keyring.gpg] http://haproxy.debian.net/ $(lsb_release -sc) main" > /etc/apt/sources.list.d/haproxy.list && \
+    apt-get update && \
+    apt-get install -y haproxy
 
-# Pobranie i instalacja HAProxy z obsługą LUA
-RUN cd /opt && \
-    wget http://www.haproxy.org/download/2.6/src/haproxy-2.6.6.tar.gz && \
-    tar xzf haproxy-2.6.6.tar.gz && \
-    cd haproxy-2.6.6 && \
-    make TARGET=linux-glibc USE_OPENSSL=1 USE_ZLIB=1 USE_PCRE=1 USE_LUA=1 LUA_LIB=/usr/lib/x86_64-linux-gnu/ LUA_INC=/usr/include/lua5.3/ && \
-    make install
+# Klonowanie i kompilacja Coraza-SPOA
+RUN git clone https://github.com/corazawaf/coraza-spoa.git /opt/coraza-spoa && \
+    cd /opt/coraza-spoa && \
+    make
 
-# Konfiguracja ModSecurity:
-# - kopiujemy przykładowy plik konfiguracyjny,
-# - kopiujemy mapowanie znaków (unicode.mapping),
-# - włączamy tryb "On" (zamiast DetectionOnly)
-RUN mkdir /etc/modsecurity && \
-    cp /usr/local/modsecurity/etc/modsecurity.conf-recommended /etc/modsecurity/modsecurity.conf && \
-    cp /opt/ModSecurity/unicode.mapping /etc/modsecurity/ && \
-    sed -i 's/SecRuleEngine DetectionOnly/SecRuleEngine On/' /etc/modsecurity/modsecurity.conf
+# Utworzenie grupy i użytkownika dla coraza-spoa
+RUN addgroup --system coraza-spoa && \
+    adduser --system --ingroup coraza-spoa --no-create-home --home /nonexistent --disabled-password coraza-spoa
 
-# Pobranie OWASP CRS (Core Rule Set)
-RUN cd /opt && \
-    git clone --depth 1 https://github.com/coreruleset/coreruleset.git && \
-    mv coreruleset /etc/modsecurity/crs && \
-    cp /etc/modsecurity/crs/crs-setup.conf.example /etc/modsecurity/crs/crs-setup.conf
+# Utworzenie katalogów konfiguracyjnych oraz logów dla Coraza-SPOA
+RUN mkdir -p /etc/coraza-spoa && \
+    mkdir -p /var/log/coraza-spoa /var/log/coraza-spoa/audit && \
+    touch /var/log/coraza-spoa/server.log /var/log/coraza-spoa/error.log /var/log/coraza-spoa/audit.log /var/log/coraza-spoa/debug.log
 
-# Utworzenie łączonej konfiguracji dla ModSecurity (dla przykładowej integracji)
-RUN echo 'Include /etc/modsecurity/modsecurity.conf' > /etc/modsecurity/haproxy-modsecurity.conf && \
-    echo 'Include /etc/modsecurity/crs/crs-setup.conf' >> /etc/modsecurity/haproxy-modsecurity.conf && \
-    echo 'Include /etc/modsecurity/crs/rules/*.conf' >> /etc/modsecurity/haproxy-modsecurity.conf
+# Skopiowanie skompilowanego binarki Coraza-SPOA
+RUN cp /opt/coraza-spoa/coraza-spoa_amd64 /usr/bin/coraza-spoa && \
+    chmod 755 /usr/bin/coraza-spoa
 
-# Utworzenie katalogu na logi ModSecurity
-RUN mkdir /var/log/modsecurity && \
-    chown -R nobody /var/log/modsecurity
+# Utworzenie pliku konfiguracyjnego SPOA (config.yaml)
+RUN bash -c 'cat << "EOF" > /etc/coraza-spoa/config.yaml
+# The SPOA server bind address
+bind: 127.0.0.1:9000
 
-# Skopiowanie konfiguracji HAProxy
-COPY haproxy.cfg /usr/local/etc/haproxy/haproxy.cfg
+# Process request and response with this application if provided app name is not found.
+# You can remove or comment out this config param if you don'\''t need "default_application" functionality.
+default_application: haproxy_waf
 
-# Skopiowanie skryptu LUA, który symuluje wywołanie WAF (ModSecurity)
-COPY modsecurity.lua /usr/local/etc/haproxy/modsecurity.lua
+applications:
+  haproxy_waf:
+    # Get the coraza.conf from https://github.com/corazawaf/coraza
+    #
+    # Download the OWASP CRS from https://github.com/coreruleset/coreruleset/releases
+    # and copy crs-setup.conf & the rules, plugins directories to /etc/coraza-spoa
+    directives: |
+      Include /etc/coraza-spoa/coraza.conf
+      Include /etc/coraza-spoa/crs-setup.conf
+      Include /etc/coraza-spoa/plugins/*-config.conf
+      Include /etc/coraza-spoa/plugins/*-before.conf
+      Include /etc/coraza-spoa/rules/*.conf
+      Include /etc/coraza-spoa/plugins/*-after.conf
 
-# Otwieramy porty 80 i 443
-EXPOSE 80 443
+    # HAProxy configured to send requests only, that means no cache required
+    # NOTE: there are still some memory & caching issues, so use this with care
+    no_response_check: true
 
-# Uruchomienie HAProxy w trybie pierwszoplanowym (foreground)
-CMD ["haproxy", "-f", "/usr/local/etc/haproxy/haproxy.cfg", "-db"]
+    # The transaction cache lifetime in milliseconds (60000ms = 60s)
+    transaction_ttl_ms: 60000
+    # The maximum number of transactions which can be cached
+    transaction_active_limit: 100000
+
+    # The log level configuration, one of: debug/info/warn/error/panic/fatal
+    log_level: info
+    # The log file path
+    log_file: /var/log/coraza-spoa/coraza-agent.log
+EOF'
+
+# Pobranie zalecanej konfiguracji Coraza i włączenie reguł
+RUN curl -fsSL https://raw.githubusercontent.com/corazawaf/coraza/main/coraza.conf-recommended -o /etc/coraza-spoa/coraza.conf && \
+    sed -i 's/SecRuleEngine DetectionOnly/SecRuleEngine On/' /etc/coraza-spoa/coraza.conf
+
+# Klonowanie i kopiowanie OWASP CRS (Core Rule Set)
+RUN mkdir -p /opt/coraza-crs && \
+    cd /opt/coraza-crs && \
+    git clone https://github.com/coreruleset/coreruleset.git && \
+    cp coreruleset/crs-setup.conf.example /etc/coraza-spoa/crs-setup.conf && \
+    cp -R coreruleset/rules /etc/coraza-spoa && \
+    cp -R coreruleset/plugins /etc/coraza-spoa
+
+# Ustawienie uprawnień dla konfiguracji Coraza-SPOA
+RUN chown -R coraza-spoa:coraza-spoa /etc/coraza-spoa && \
+    chmod 700 /etc/coraza-spoa && \
+    chmod -R 600 /etc/coraza-spoa/* && \
+    chmod 700 /etc/coraza-spoa/rules && \
+    chmod 700 /etc/coraza-spoa/plugins
+
+# Konfiguracja integracji HAProxy ze SPOA:
+# Kopiujemy plik coraza.cfg (dostarczony w build context) do /etc/haproxy i modyfikujemy jego zawartość
+COPY coraza.cfg /etc/haproxy/coraza.cfg
+RUN sed -i 's/app=str(sample_app) id=unique-id src-ip=src/app=str(haproxy_waf) id=unique-id src-ip=src/' /etc/haproxy/coraza.cfg && \
+    sed -i 's/app=str(sample_app) id=unique-id version=res.ver/app=str(haproxy_waf) id=unique-id version=res.ver/' /etc/haproxy/coraza.cfg && \
+    sed -i 's|event on-http-response|event on-http-response\n|' /etc/haproxy/coraza.cfg && \
+    chown haproxy /etc/haproxy/coraza.cfg && \
+    chmod 600 /etc/haproxy/coraza.cfg
+
+# Zamiana domyślnego pliku konfiguracyjnego HAProxy na nowy (haproxy.conf z build context)
+RUN mv /etc/haproxy/haproxy.cfg /etc/haproxy/haproxy.cfg_orig
+COPY haproxy.conf /etc/haproxy/haproxy.cfg
+RUN sed -i -e '$a\' /etc/haproxy/haproxy.cfg
+
+# Kopiujemy skrypt startowy, który uruchamia jednocześnie coraza-spoa i HAProxy
+COPY start.sh /start.sh
+RUN chmod +x /start.sh
+
+# Otwieramy port 80 (HAProxy będzie nasłuchiwać na tym porcie)
+EXPOSE 80
+
+# Domyślne polecenie uruchamiające skrypt startowy
+CMD ["/start.sh"]
