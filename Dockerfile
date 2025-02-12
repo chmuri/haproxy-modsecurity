@@ -18,7 +18,7 @@ RUN apt-get update && apt-get upgrade -y && \
         golang-go
 
 # Dodanie repozytorium HAProxy 3.0 i instalacja HAProxy
-RUN apt-get update && apt-get install --no-install-recommends software-properties-common -y && add-apt-repository ppa:vbernat/haproxy-3.0 && apt-get install haproxy=3.0.\*s -y
+RUN apt-get update && apt-get install --no-install-recommends software-properties-common -y && add-apt-repository ppa:vbernat/haproxy-3.0 && apt-get install haproxy -y
 
 # Klonowanie i kompilacja Coraza-SPOA
 RUN git clone https://github.com/corazawaf/coraza-spoa.git /opt/coraza-spoa && \
