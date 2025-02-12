@@ -42,7 +42,7 @@ RUN cp /opt/coraza-spoa/coraza-spoa_amd64 /usr/bin/coraza-spoa && \
     chmod 755 /usr/bin/coraza-spoa
 
 # Utworzenie pliku konfiguracyjnego SPOA (config.yaml)
-COPY coraza-spoa/config.yml /etc/coraza-spoa/config.yaml
+COPY coraza-spoa/config.yaml /etc/coraza-spoa/config.yaml
 
 # Pobranie zalecanej konfiguracji Coraza i włączenie reguł
 RUN curl -fsSL https://raw.githubusercontent.com/corazawaf/coraza/main/coraza.conf-recommended -o /etc/coraza-spoa/coraza.conf && \
