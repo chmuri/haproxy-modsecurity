@@ -18,10 +18,7 @@ RUN apt-get update && apt-get upgrade -y && \
         golang-go
 
 # Dodanie repozytorium HAProxy 3.0 i instalacja HAProxy
-RUN curl -fsSL https://haproxy.debian.net/bernat.de.gpg | gpg --dearmor -o /usr/share/keyrings/haproxy-archive-keyring.gpg && \
-    echo "deb [signed-by=/usr/share/keyrings/haproxy-archive-keyring.gpg] http://haproxy.debian.net/ $(lsb_release -sc) main" > /etc/apt/sources.list.d/haproxy.list && \
-    apt-get update && \
-    apt-get install -y haproxy
+RUN apt-get install --no-install-recommends software-properties-common && add-apt-repository ppa:vbernat/haproxy-3.0 && apt-get install haproxy=3.0.\*s
 
 # Klonowanie i kompilacja Coraza-SPOA
 RUN git clone https://github.com/corazawaf/coraza-spoa.git /opt/coraza-spoa && \
